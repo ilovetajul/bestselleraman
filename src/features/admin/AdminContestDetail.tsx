@@ -60,7 +60,7 @@ export const AdminContestDetail: React.FC<AdminContestDetailProps> = ({ contestI
   const loadContest = async () => {
     const { data } = await supabase
       .from('contests')
-      .select('id, name, timezone, start_at, end_at, duration_seconds, status, results_published, created_at')
+      .select('id, name, timezone, start_at, end_at, duration_seconds, status, results_published, answer_mode, created_at')
       .eq('id', contestId)
       .maybeSingle();
     setContest((data as AdminContestRow) ?? null);
@@ -168,6 +168,7 @@ export const AdminContestDetail: React.FC<AdminContestDetailProps> = ({ contestI
             {formatDhaka(contest.start_at)} → {formatDhaka(contest.end_at)} (Bangladesh Time)
           </p>
         </div>
+        <Badge tone="neutral">{contest.answer_mode === 'voice' ? '🎤 Voice' : '⌨️ Keyboard'}</Badge>
         <Badge tone={contest.status === 'live' ? 'primary' : contest.status === 'finished' ? 'rose' : 'amber'}>
           {contest.status}
         </Badge>

@@ -18,6 +18,7 @@ interface CreateContestBody {
   timezone?: string;
   requireContact?: boolean;
   initialStatus?: 'draft' | 'scheduled';
+  answerMode?: 'keyboard' | 'voice';
 }
 
 Deno.serve(async (req) => {
@@ -45,6 +46,7 @@ Deno.serve(async (req) => {
   const durationSeconds = typeof body.durationSeconds === 'number' ? Math.floor(body.durationSeconds) : 0;
   const requireContact = !!body.requireContact;
   const initialStatus = body.initialStatus === 'scheduled' ? 'scheduled' : 'draft';
+  const answerMode = body.answerMode === 'voice' ? 'voice' : 'keyboard';
 
   const startAt = body.startAt ? new Date(body.startAt) : null;
   const endAt = body.endAt ? new Date(body.endAt) : null;
@@ -74,6 +76,7 @@ Deno.serve(async (req) => {
       end_at: endAt.toISOString(),
       duration_seconds: durationSeconds,
       require_contact: requireContact,
+      answer_mode: answerMode,
       status: initialStatus,
     })
     .select('id')

@@ -1,4 +1,5 @@
 export type ContestStatus = 'draft' | 'scheduled' | 'live' | 'finished';
+export type AnswerMode = 'keyboard' | 'voice';
 
 export interface ContestPublic {
   id: string;
@@ -9,6 +10,7 @@ export interface ContestPublic {
   durationSeconds: number;
   status: ContestStatus;
   resultsPublished: boolean;
+  answerMode: AnswerMode;
 }
 
 export interface ContestPrompt {
@@ -113,5 +115,6 @@ export interface AdminContestRow {
   duration_seconds: number;
   status: ContestStatus;
   results_published: boolean;
+  answer_mode: AnswerMode;
   created_at: string;
 }

@@ -36,7 +36,7 @@ let activeRecognition: any = null; // eslint-disable-line @typescript-eslint/no-
 export function startListening(
   onResult: SpeechRecognitionResultHandler,
   onEnd?: () => void,
-  onError?: () => void
+  onError?: (errorCode?: string) => void
 ): boolean {
   const Ctor = getRecognitionCtor();
   if (!Ctor) return false;
@@ -51,8 +51,8 @@ export function startListening(
       const transcript = event.results?.[0]?.[0]?.transcript ?? '';
       onResult(transcript);
     };
-    recognition.onerror = () => {
-      onError?.();
+    recognition.onerror = (event: any) => {
+      onError?.(event?.error);
     };
     recognition.onend = () => {
       onEnd?.();

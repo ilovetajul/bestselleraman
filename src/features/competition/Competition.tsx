@@ -5,6 +5,7 @@ import { useContestSync } from './hooks/useContestSync';
 import { useAntiCheat, trackRefreshCount } from './hooks/useAntiCheat';
 import { CountdownTimer } from './components/CountdownTimer';
 import { AnswerInput } from './components/AnswerInput';
+import { VoiceAnswerFlow } from './components/VoiceAnswerFlow';
 import { loadStoredParticipant, saveStoredParticipant, clearStoredParticipant } from './lib/storage';
 import { callFunction, isSupabaseConfigured, supabase } from '../../lib/supabase';
 import type {
@@ -359,13 +360,16 @@ const CompetitionInner: React.FC = () => {
   }
 
   if (stage === 'live' && contest) {
+    const isVoiceMode = contest.answerMode === 'voice';
     return (
       <div className="max-w-lg mx-auto px-4 sm:px-6 py-8">
         <div className="text-center mb-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-primary-600 dark:text-primary-300">
             🏆 BESTSELLER 10 Founding Principles
           </p>
-          <p className="text-sm text-ink/55 dark:text-white/55 mt-1">Type all 10 principles from memory.</p>
+          <p className="text-sm text-ink/55 dark:text-white/55 mt-1">
+            {isVoiceMode ? 'Speak all 10 principles from memory.' : 'Type all 10 principles from memory.'}
+          </p>
           <div className="mt-4">
             <p className="text-xs text-ink/45 dark:text-white/45 mb-1">Time Remaining</p>
             <CountdownTimer
@@ -378,22 +382,35 @@ const CompetitionInner: React.FC = () => {
         </div>
 
         <p className="text-xs text-center text-ink/40 dark:text-white/40 mb-5">
-          Please type your answers directly. Copy and paste is not allowed.
+          {isVoiceMode
+            ? 'Please speak your answers aloud. Keyboard typing is disabled for this competition.'
+            : 'Please type your answers directly. Copy and paste is not allowed.'}
         </p>
 
-        <div ref={formRef} className="space-y-3">
-          {Array.from({ length: QUESTION_COUNT }, (_, i) => (
-            <AnswerInput
-              key={i}
-              index={i}
-              value={answers[i]}
-              onChange={(v) => handleAnswerChange(i, v)}
+        <div ref={formRef}>
+          {isVoiceMode ? (
+            <VoiceAnswerFlow
+              prompts={prompts}
+              answers={answers}
+              onAnswersChange={setAnswers}
               disabled={submitting}
             />
-          ))}
+          ) : (
+            <div className="space-y-3">
+              {Array.from({ length: QUESTION_COUNT }, (_, i) => (
+                <AnswerInput
+                  key={i}
+                  index={i}
+                  value={answers[i]}
+                  onChange={(v) => handleAnswerChange(i, v)}
+                  disabled={submitting}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
-        {prompts.length > 0 && (
+        {!isVoiceMode && prompts.length > 0 && (
           <p className="text-xs text-center text-ink/35 dark:text-white/35 mt-3 lang-bn">
             {prompts.map((p) => p.prompt).join(' • ')}
           </p>

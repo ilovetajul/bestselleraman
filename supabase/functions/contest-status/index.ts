@@ -27,14 +27,14 @@ Deno.serve(async (req) => {
   if (contestId) {
     const { data } = await admin
       .from('contests')
-      .select('id, name, timezone, start_at, end_at, duration_seconds, status, results_published')
+      .select('id, name, timezone, start_at, end_at, duration_seconds, status, results_published, answer_mode')
       .eq('id', contestId)
       .maybeSingle();
     contest = data ?? null;
   } else {
     const { data: activeOrUpcoming } = await admin
       .from('contests')
-      .select('id, name, timezone, start_at, end_at, duration_seconds, status, results_published')
+      .select('id, name, timezone, start_at, end_at, duration_seconds, status, results_published, answer_mode')
       .in('status', ['scheduled', 'live'])
       .order('start_at', { ascending: true })
       .limit(1)
@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
     } else {
       const { data: lastFinished } = await admin
         .from('contests')
-        .select('id, name, timezone, start_at, end_at, duration_seconds, status, results_published')
+        .select('id, name, timezone, start_at, end_at, duration_seconds, status, results_published, answer_mode')
         .eq('status', 'finished')
         .order('end_at', { ascending: false })
         .limit(1)
@@ -66,6 +66,7 @@ Deno.serve(async (req) => {
           durationSeconds: contest.duration_seconds,
           status: contest.status,
           resultsPublished: contest.results_published,
+          answerMode: contest.answer_mode,
         }
       : null,
   });

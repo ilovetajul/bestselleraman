@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Clock, ShieldCheck, LogOut } from 'lucide-react';
+import { Plus, Clock, ShieldCheck, LogOut, Keyboard, Mic } from 'lucide-react';
 import { supabase, callFunction } from '../../lib/supabase';
 import { useAdminAuth } from './hooks/useAdminAuth';
-import type { AdminContestRow, ContestStatus } from '../../types/competition';
+import type { AdminContestRow, AnswerMode, ContestStatus } from '../../types/competition';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -45,6 +45,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenContest })
   const [endTime, setEndTime] = useState('');
   const [durationMinutes, setDurationMinutes] = useState(10);
   const [requireContact, setRequireContact] = useState(false);
+  const [answerMode, setAnswerMode] = useState<AnswerMode>('keyboard');
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -52,7 +53,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenContest })
     setLoading(true);
     const { data } = await supabase
       .from('contests')
-      .select('id, name, timezone, start_at, end_at, duration_seconds, status, results_published, created_at')
+      .select('id, name, timezone, start_at, end_at, duration_seconds, status, results_published, answer_mode, created_at')
       .order('created_at', { ascending: false });
     setContests((data ?? []) as AdminContestRow[]);
     setLoading(false);
@@ -83,6 +84,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenContest })
           timezone: 'Asia/Dhaka',
           requireContact,
           initialStatus,
+          answerMode,
         },
         { authed: true }
       );
@@ -200,6 +202,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenContest })
                 />
               </div>
 
+              <div>
+                <label className="text-xs font-medium text-ink/60 dark:text-white/60 block mb-1.5">
+                  Answer Input Mode
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setAnswerMode('keyboard')}
+                    className={`flex items-start gap-2.5 text-left px-3.5 py-3 rounded-xl border transition-colors ${
+                      answerMode === 'keyboard'
+                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/10'
+                        : 'border-black/15 dark:border-white/20'
+                    }`}
+                  >
+                    <Keyboard size={16} className="mt-0.5 shrink-0" />
+                    <span>
+                      <span className="block text-sm font-medium">Keyboard Typing</span>
+                      <span className="block text-xs text-ink/50 dark:text-white/50">
+                        With anti-copy/paste protection
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAnswerMode('voice')}
+                    className={`flex items-start gap-2.5 text-left px-3.5 py-3 rounded-xl border transition-colors ${
+                      answerMode === 'voice'
+                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/10'
+                        : 'border-black/15 dark:border-white/20'
+                    }`}
+                  >
+                    <Mic size={16} className="mt-0.5 shrink-0" />
+                    <span>
+                      <span className="block text-sm font-medium">Voice Only</span>
+                      <span className="block text-xs text-ink/50 dark:text-white/50">
+                        No typing at all — Chrome only
+                      </span>
+                    </span>
+                  </button>
+                </div>
+              </div>
+
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -247,7 +291,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenContest })
                       <Clock size={12} /> {formatDhaka(c.start_at)} → {formatDhaka(c.end_at)}
                     </p>
                   </div>
-                  <Badge tone={STATUS_TONE[c.status]}>{c.status}</Badge>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <Badge tone={STATUS_TONE[c.status]}>{c.status}</Badge>
+                    <Badge tone="neutral">
+                      {c.answer_mode === 'voice' ? '🎤 Voice' : '⌨️ Keyboard'}
+                    </Badge>
+                  </div>
                 </div>
               </Card>
             ))}
