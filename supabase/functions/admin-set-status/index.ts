@@ -45,10 +45,43 @@ Deno.serve(async (req) => {
   const update: Record<string, unknown> = { status };
 
   if (status === 'live' && body.adjustStartToNow) {
-    update.start_at = now.toISOString();
+    // Fetch the configured duration so the end time moves forward with the
+    // start time. Without this, "Start Now" clicked any time after the
+    // originally scheduled end_at would try to set start_at to a value
+    // AFTER the still-old end_at — violating the end_after_start check
+    // constraint and failing with a generic error.
+    const { data: existing, error: fetchError } = await db
+      .from('contests')
+      .select('duration_seconds')
+      .eq('id', contestId)
+      .maybeSingle();
+
+    if (fetchError || !existing) {
+      return jsonResponse({ error: 'Contest not found.' }, 404);
+    }
+
+    const newStart = now;
+    const newEnd = new Date(now.getTime() + existing.duration_seconds * 1000);
+    update.start_at = newStart.toISOString();
+    update.end_at = newEnd.toISOString();
   }
+
   if (status === 'finished' && body.adjustEndToNow) {
-    update.end_at = now.toISOString();
+    // Symmetric safety check: end_at must stay after start_at even in the
+    // unlikely case "End Competition" is clicked in the same instant as
+    // (or somehow before) the contest's own start_at.
+    const { data: existing } = await db
+      .from('contests')
+      .select('start_at')
+      .eq('id', contestId)
+      .maybeSingle();
+
+    const startAt = existing ? new Date(existing.start_at) : null;
+    const candidate = now;
+    update.end_at =
+      startAt && candidate.getTime() <= startAt.getTime()
+        ? new Date(startAt.getTime() + 1000).toISOString()
+        : candidate.toISOString();
   }
 
   const { data, error } = await db

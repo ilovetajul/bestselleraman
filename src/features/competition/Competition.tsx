@@ -34,7 +34,10 @@ const QUESTION_COUNT = 10;
 
 const CompetitionInner: React.FC = () => {
   const [stage, setStage] = useState<Stage>('loading');
-  const pollInterval = ['submitted', 'results', 'closed', 'error', 'not-configured'].includes(stage)
+  // Keep polling while sitting on "submitted" so results appear
+  // automatically once the admin publishes — without this, a participant
+  // who stays on this screen would need to manually refresh to see them.
+  const pollInterval = ['results', 'closed', 'error', 'not-configured'].includes(stage)
     ? null
     : 5000;
   const { contest, loading: contestLoading, error: contestError, serverNow } = useContestSync(

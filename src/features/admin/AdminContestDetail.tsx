@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Award,
   ShieldAlert,
+  Pencil,
 } from 'lucide-react';
 import { supabase, callFunction } from '../../lib/supabase';
 import { useAdminLeaderboard } from './hooks/useAdminLeaderboard';
@@ -18,7 +19,7 @@ import { exportLeaderboardCsv } from './lib/csv';
 import { ParticipantDetailModal } from './components/ParticipantDetailModal';
 import { TypedConfirmDialog } from './components/TypedConfirmDialog';
 import { StatCard } from './components/StatCard';
-import type { AdminContestRow, AdminLeaderboardRow, IntegrityStatus } from '../../types/competition';
+import type { AdminContestRow, AdminLeaderboardRow, AnswerMode, IntegrityStatus } from '../../types/competition';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -32,6 +33,28 @@ function formatDhaka(iso: string): string {
     dateStyle: 'medium',
     timeStyle: 'medium',
   });
+}
+
+function isoToDhakaParts(iso: string): { date: string; time: string } {
+  const d = new Date(iso);
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Dhaka',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
+  return { date: `${get('year')}-${get('month')}-${get('day')}`, time: `${get('hour')}:${get('minute')}` };
+}
+
+function dhakaDateTimeToISO(dateStr: string, timeStr: string): string | null {
+  if (!dateStr || !timeStr) return null;
+  const iso = new Date(`${dateStr}T${timeStr}:00+06:00`);
+  return Number.isNaN(iso.getTime()) ? null : iso.toISOString();
 }
 
 function formatCompletion(seconds: number | null): string {
@@ -54,6 +77,17 @@ export const AdminContestDetail: React.FC<AdminContestDetailProps> = ({ contestI
   const [sortKey, setSortKey] = useState<SortKey>('score');
   const [selectedRow, setSelectedRow] = useState<AdminLeaderboardRow | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editStartTime, setEditStartTime] = useState('');
+  const [editEndDate, setEditEndDate] = useState('');
+  const [editEndTime, setEditEndTime] = useState('');
+  const [editDurationMinutes, setEditDurationMinutes] = useState(10);
+  const [editAnswerMode, setEditAnswerMode] = useState<AnswerMode>('keyboard');
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -143,6 +177,65 @@ export const AdminContestDetail: React.FC<AdminContestDetailProps> = ({ contestI
       await refresh();
     });
 
+  const openEdit = () => {
+    if (!contest) return;
+    const start = isoToDhakaParts(contest.start_at);
+    const end = isoToDhakaParts(contest.end_at);
+    setEditName(contest.name);
+    setEditStartDate(start.date);
+    setEditStartTime(start.time);
+    setEditEndDate(end.date);
+    setEditEndTime(end.time);
+    setEditDurationMinutes(Math.round(contest.duration_seconds / 60));
+    setEditAnswerMode(contest.answer_mode);
+    setEditError(null);
+    setEditOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    setEditError(null);
+    const startAt = dhakaDateTimeToISO(editStartDate, editStartTime);
+    const endAt = dhakaDateTimeToISO(editEndDate, editEndTime);
+    if (!editName.trim()) return setEditError('Competition name is required.');
+    if (!startAt) return setEditError('A valid start date and time is required.');
+    if (!endAt) return setEditError('A valid end date and time is required.');
+
+    setEditSaving(true);
+    try {
+      await callFunction(
+        'admin-update-contest',
+        {
+          contestId,
+          name: editName.trim(),
+          startAt,
+          endAt,
+          durationSeconds: Math.round(editDurationMinutes * 60),
+          answerMode: editAnswerMode,
+        },
+        { authed: true }
+      );
+      setEditOpen(false);
+      await loadContest();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Could not save changes.');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await callFunction('admin-delete-contest', { contestId, confirmText: 'DELETE' }, { authed: true });
+      setDeleteOpen(false);
+      onBack(); // navigate away first — the contest row (and this view) no longer applies
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not delete contest.');
+      setBusy(false);
+    }
+  };
+
   const handleOverrideIntegrity = async (submissionId: string, status: IntegrityStatus) => {
     await callFunction('admin-set-integrity', { submissionId, status }, { authed: true });
     await refresh();
@@ -224,12 +317,141 @@ export const AdminContestDetail: React.FC<AdminContestDetailProps> = ({ contestI
             >
               Export CSV
             </Button>
+            {(contest.status === 'draft' || contest.status === 'scheduled') && (
+              <Button size="sm" variant="secondary" icon={<Pencil size={14} />} onClick={openEdit}>
+                Edit Details
+              </Button>
+            )}
             <Button size="sm" variant="danger" icon={<Trash2 size={14} />} onClick={() => setResetOpen(true)}>
               Reset Contest
             </Button>
+            {contest.status !== 'live' && (
+              <Button size="sm" variant="danger" icon={<Trash2 size={14} />} onClick={() => setDeleteOpen(true)}>
+                Delete Contest
+              </Button>
+            )}
           </div>
           {actionError && <p className="text-sm text-rose-600 dark:text-rose-300 mt-3">{actionError}</p>}
         </Card>
+
+        {/* ---- edit form ---- */}
+        {editOpen && (
+          <Card className="p-5 sm:p-6">
+            <h2 className="font-display font-semibold mb-4">Edit Competition Details</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-ink/60 dark:text-white/60 block mb-1.5">
+                  Competition Name
+                </label>
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-black/15 dark:border-white/20 bg-transparent outline-none focus:border-primary-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-ink/60 dark:text-white/60 block mb-1.5">
+                    Start Date (Asia/Dhaka)
+                  </label>
+                  <input
+                    type="date"
+                    value={editStartDate}
+                    onChange={(e) => setEditStartDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-black/15 dark:border-white/20 bg-transparent outline-none focus:border-primary-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-ink/60 dark:text-white/60 block mb-1.5">
+                    Start Time (Asia/Dhaka)
+                  </label>
+                  <input
+                    type="time"
+                    value={editStartTime}
+                    onChange={(e) => setEditStartTime(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-black/15 dark:border-white/20 bg-transparent outline-none focus:border-primary-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-ink/60 dark:text-white/60 block mb-1.5">
+                    End Date (Asia/Dhaka)
+                  </label>
+                  <input
+                    type="date"
+                    value={editEndDate}
+                    onChange={(e) => setEditEndDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-black/15 dark:border-white/20 bg-transparent outline-none focus:border-primary-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-ink/60 dark:text-white/60 block mb-1.5">
+                    End Time (Asia/Dhaka)
+                  </label>
+                  <input
+                    type="time"
+                    value={editEndTime}
+                    onChange={(e) => setEditEndTime(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-black/15 dark:border-white/20 bg-transparent outline-none focus:border-primary-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-ink/60 dark:text-white/60 block mb-1.5">
+                  Duration (minutes)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={editDurationMinutes}
+                  onChange={(e) => setEditDurationMinutes(Number(e.target.value))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-black/15 dark:border-white/20 bg-transparent outline-none focus:border-primary-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-ink/60 dark:text-white/60 block mb-1.5">
+                  Answer Input Mode
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setEditAnswerMode('keyboard')}
+                    className={`px-3.5 py-2.5 rounded-xl border text-sm font-medium transition-colors ${
+                      editAnswerMode === 'keyboard'
+                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/10'
+                        : 'border-black/15 dark:border-white/20'
+                    }`}
+                  >
+                    ⌨️ Keyboard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditAnswerMode('voice')}
+                    className={`px-3.5 py-2.5 rounded-xl border text-sm font-medium transition-colors ${
+                      editAnswerMode === 'voice'
+                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/10'
+                        : 'border-black/15 dark:border-white/20'
+                    }`}
+                  >
+                    🎤 Voice Only
+                  </button>
+                </div>
+              </div>
+
+              {editError && <p className="text-sm text-rose-600 dark:text-rose-300">{editError}</p>}
+
+              <div className="flex gap-2.5 pt-1">
+                <Button disabled={editSaving} onClick={handleSaveEdit}>
+                  {editSaving ? 'Saving…' : 'Save Changes'}
+                </Button>
+                <Button variant="ghost" onClick={() => setEditOpen(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* ---- top 3 ---- */}
         {topThree.length > 0 && (
@@ -362,6 +584,16 @@ export const AdminContestDetail: React.FC<AdminContestDetailProps> = ({ contestI
         confirmLabel="Reset Contest"
         onCancel={() => setResetOpen(false)}
         onConfirm={handleReset}
+      />
+
+      <TypedConfirmDialog
+        open={deleteOpen}
+        title="Delete this contest?"
+        description="This permanently deletes the competition itself, along with all its questions, participants, and submissions. This cannot be undone."
+        requiredText="DELETE"
+        confirmLabel="Delete Contest"
+        onCancel={() => setDeleteOpen(false)}
+        onConfirm={handleDelete}
       />
     </div>
   );
